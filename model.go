@@ -28,12 +28,12 @@ var DNSAddrs = []string{
 	"101.226.4.6:53",
 	"123.125.81.6:53"}
 
-//new socks5 proxy server and start UDP listening,include multiple DNS server for resolve host ip
+// new socks5 proxy server and start UDP listening,include multiple DNS server for resolve host ip
 func NewSocks5Server(config Config) *Server {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	s := &Server{}
 	if config == nil {
-		s.Conf = newDefConfig()
+		s.Conf = DefaultConfig
 	}
 	s.TCPRequestMap = make(map[string]*TCPRequest)
 	s.lock = sync.RWMutex{}
@@ -58,7 +58,7 @@ func NewSocks5Server(config Config) *Server {
 	return s
 }
 
-//Start Server listening,once connection accept,server will not close the conn until client close.
+// Start Server listening,once connection accept,server will not close the conn until client close.
 func (s *Server) Listen() error {
 	//TCP SERVER
 	listener, err := net.Listen("tcp", ":"+s.Conf.GetPort())
@@ -81,7 +81,7 @@ func (s *Server) Listen() error {
 }
 
 func (s *Server) startUDPServer() {
-	expectedAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%v:%v", "0.0.0.0", 0))
+	expectedAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%v:%v", "0.0.0.0", s.Conf.GetPort()))
 	if err != nil {
 		panic(err)
 	}
@@ -119,7 +119,7 @@ type TCPConn struct {
 	Dialer  *net.Dialer
 }
 
-//NewTCPRequest Add new connect request
+// NewTCPRequest Add new connect request
 func (s *TCPConn) NewTCPRequest(req *TCPRequest) *TCPRequest {
 	s.server.lock.Lock()
 	defer s.server.lock.Unlock()
@@ -130,7 +130,7 @@ func (s *TCPConn) NewTCPRequest(req *TCPRequest) *TCPRequest {
 	return s.server.TCPRequestMap[targetAddrStr]
 }
 
-//DelTCPRequest del request & close connection
+// DelTCPRequest del request & close connection
 func (s *TCPConn) DelTCPRequest(targetAddr string) {
 	s.server.lock.Lock()
 	defer s.server.lock.Unlock()
@@ -169,7 +169,7 @@ type Socks5UDPserver struct {
 	UDPRequestMap map[string]*UDPRequest
 }
 
-//UDPRequest save each of udp conn by client.support for fragments
+// UDPRequest save each of udp conn by client.support for fragments
 type UDPRequest struct {
 	clientAddr      *net.UDPAddr
 	remoteConn      *net.UDPConn
