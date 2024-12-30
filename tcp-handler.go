@@ -226,7 +226,8 @@ func (s *TCPConn) resolveAddress(conn net.Conn, req *TCPRequest) (err error) {
 			return err
 		}
 		domain := string(hostBytes)
-		IPAddrs, err := s.server.hostResolver.LookupIPAddr(context.Background(), domain)
+		// IPAddrs, err := s.server.hostResolver.LookupIPAddr(context.Background(), domain)
+		IPAddrs, err := net.DefaultResolver.LookupIPAddr(context.Background(), domain)
 		if err != nil {
 			return err
 		}
