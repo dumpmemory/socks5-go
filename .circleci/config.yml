@@ -3,7 +3,8 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.19 # 使用 CircleCI 提供的默认 Go 环境镜像
+      - image: cimg/go:1.21
+ # 使用 CircleCI 提供的默认 Go 环境镜像
     steps:
       - checkout # 检出代码
       - run:
