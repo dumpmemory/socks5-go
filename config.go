@@ -44,6 +44,21 @@ func newDefConfig() *defConfig {
 		s.defAuth.userInfo[os.Args[2]] = os.Args[3]
 		s.hasAuth = true
 	}
+
+	// 从环境变量读取端口
+	if envPort := os.Getenv("SOCKS5_PORT"); envPort != "" {
+		s.Port = envPort
+	}
+
+	// 从环境变量读取认证信息
+	if username := os.Getenv("SOCKS5_USER"); username != "" {
+		if password := os.Getenv("SOCKS5_PASSWORD"); password != "" {
+			s.defAuth = &defAuth{userInfo: make(map[string]string)}
+			s.defAuth.userInfo[username] = password
+			s.hasAuth = true
+		}
+	}
+
 	return s
 }
 func (s *defConfig) GetPort() string {

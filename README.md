@@ -27,7 +27,7 @@ Download📶
 =======
 Get the latest version on [**Release**](https://github.com/realzhangliu/socks5-go/releases)
 
-Start😀
+Start with terminal😀
 =======
 you may need to add run permission first
 ```shell
@@ -40,6 +40,13 @@ Port only(No Auth)
 Port and Username/Password
 ```shell
 ./socks5g-linux-amd64 1080 admin 123
+```
+
+Start with Docker 😘
+=======
+modify the docker-compose.yml file, changing environment variables SOCKS5_PORT,SOCKS5_USER,SOCKS5_PASSWORD to the values you want.
+```shell 
+docker-compose up -d
 ```
 
 Example 👌

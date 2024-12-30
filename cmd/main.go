@@ -9,7 +9,6 @@ import (
 func main() {
 	//var config socks5.Config
 	//Implement yourself  Config , default is provided.
-	socks5.DefaultConfig.Port = "10080"
 	S5Server := socks5.NewSocks5Server(nil)
 	log.Println(S5Server.Listen())
 }

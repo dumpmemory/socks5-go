@@ -2,7 +2,6 @@ package socks5
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"net"

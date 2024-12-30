@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  socks5-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: socks5-proxy
+    ports:
+      - "1080:1080/tcp"  # SOCKS5 TCP端口
+      - "1080:1080/udp"  # SOCKS5 UDP端口
+    environment:
+      - SOCKS5_PORT=1080
+      # 如果需要用户名密码认证，可以取消注释下面的环境变量
+      # - SOCKS5_USER=user
+      # - SOCKS5_PASSWORD=password
+    restart: unless-stopped
+    networks:
+      - proxy-network
+    # 可选：限制资源使用
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+networks:
+  proxy-network:
+    driver: bridge 
