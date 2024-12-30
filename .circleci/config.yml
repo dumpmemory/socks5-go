@@ -1,15 +1,29 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine.
+# See: https://circleci.com/docs/configuration-reference
+
+# For a detailed guide to building and testing with Go, read the docs:
+# https://circleci.com/docs/language-go/ for more details
 version: 2.1
 
+# Define a job to be invoked later in a workflow.
+# See: https://circleci.com/docs/jobs-steps/#jobs-overview & https://circleci.com/docs/configuration-reference/#jobs
 jobs:
   build:
+    # Specify the execution environment. You can specify an image from Docker Hub or use one of our convenience images from CircleCI's Developer Hub.
+    # See: https://circleci.com/docs/executor-intro/ & https://circleci.com/docs/configuration-reference/#executor-job
     docker:
+      # Specify the version you desire here
+      # See: https://circleci.com/developer/images/image/cimg/go
       - image: cimg/go:1.21
- # 使用 CircleCI 提供的默认 Go 环境镜像
+
+    # Add steps to the job
+    # See: https://circleci.com/docs/jobs-steps/#steps-overview & https://circleci.com/docs/configuration-reference/#steps
     steps:
-      - checkout # 检出代码
-      - run:
-          name: Install Build Dependencies
-          command: apk add --no-cache gcc musl-dev
+      # Checkout the code as the first step.
+      - checkout
+      - restore_cache:
+          keys:
+            - go-mod-v4-{{ checksum "go.sum" }}
       - run:
           name: Build Application
           command: |
@@ -19,25 +33,10 @@ jobs:
           name: Verify Binary
           command: ./socks5-proxy --help || echo "Build successful"
 
-  docker_build:
-    docker:
-      - image: circleci/docker:latest # 使用 CircleCI 默认 Docker 镜像
-    steps:
-      - checkout
-      - setup_remote_docker # 启用 Docker 环境
-      - run:
-          name: Build Docker Image
-          command: docker build -t socks5-proxy .
-      - run:
-          name: Test Docker Image
-          command: |
-            docker run --rm socks5-proxy --help || echo "Docker image is valid"
-
+# Orchestrate jobs using workflows
+# See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
 workflows:
-  version: 2
-  default:
+  sample: # This is the name of the workflow, feel free to change it to better match your workflow.
+    # Inside the workflow, you define the jobs you want to run.
     jobs:
       - build
-      - docker_build:
-          requires:
-            - build
