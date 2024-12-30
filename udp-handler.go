@@ -35,7 +35,7 @@ func AssembleHeader(data []byte, addr *net.UDPAddr) *bytes.Buffer {
 		addrATYP = atypIPV6
 		addrBody = []byte(addr.IP.To16())
 	default:
-		fmt.Errorf("failed to format address")
+		log.Printf("failed to format address")
 		return nil
 	}
 	proxyData.Write([]byte{0, 0, 0, addrATYP})
