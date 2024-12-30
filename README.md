@@ -1,5 +1,5 @@
 # socks5-go 🎉
-[![Build Status](https://travis-ci.com/realzhangliu/socks5-go.svg?branch=dev)](https://travis-ci.com/realzhangliu/socks5-go)
+![CircleCI](https://img.shields.io/circleci/build/github/realzhangliu/socks5-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/realzhangliu/socks5-go)](https://goreportcard.com/report/github.com/realzhangliu/socks5-go)
 
 Inspired by go-socks5,This package provides full functionality of [socks5 protocol](https://www.rfc-editor.org/rfc/pdfrfc/rfc1928.txt.pdf).
