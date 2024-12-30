@@ -1,6 +1,7 @@
 package socks5
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"regexp"
@@ -24,8 +25,33 @@ type defConfig struct {
 
 var DefaultConfig = newDefConfig()
 
+const helpText = `
+Usage: socks5-proxy [OPTIONS]
+
+Options:
+  <port>                    Listen port (default: 1080)
+  <username> <password>     Enable authentication with username and password
+  --help                    Show this help message
+
+Environment variables:
+  SOCKS5_PORT              Listen port
+  SOCKS5_USER              Username for authentication
+  SOCKS5_PASSWORD          Password for authentication
+
+Examples:
+  socks5-proxy                     # Run with default port 1080
+  socks5-proxy 2080                # Run on port 2080
+  socks5-proxy 1080 user pass      # Run with authentication
+`
+
 // default config ,read port ,user,pwd from argumens
 func newDefConfig() *defConfig {
+	// 检查是否为帮助命令
+	if len(os.Args) == 2 && os.Args[1] == "--help" {
+		fmt.Print(helpText)
+		os.Exit(0)
+	}
+
 	s := &defConfig{
 		defAuth: &defAuth{},
 	}
