@@ -7,33 +7,38 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
-//support for CMD BIND
+// support for CMD BIND
 func (s *TCPConn) HandleBIND(conn net.Conn, req *TCPRequest) {
+	//launch listener on proxy server side
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return
 	}
-	//first reply
+	//first reply,client get host side listener address and to notify dest server to connect to proxy server side listener
 	s.sendReply(conn, listener.Addr().(*net.TCPAddr).IP, listener.Addr().(*net.TCPAddr).Port, 0)
 	//server -> client
+	//dest server connect to host
 	targetConn, err := listener.Accept()
 	if err != nil {
 		return
 	}
 	//sec reply
 	s.sendReply(conn, targetConn.RemoteAddr().(*net.TCPAddr).IP, targetConn.RemoteAddr().(*net.TCPAddr).Port, 0)
-	s.NewTCPRequest(req)
+	s.RegisterTCPRequest(req)
 	closeChan := make(chan error, 2)
+	//transport data within client and dest
 	s.TCPTransport(conn, targetConn, closeChan)
-	for i := 0; i < 2; i++ {
+	for range [2]struct{}{} {
 		<-closeChan
 	}
 	s.DelTCPRequest(req.TargetAddr.String())
 }
 
-//support for CMD CONNECT
+// support for CMD CONNECT
 func (s *TCPConn) HandleCONNECT(conn net.Conn, req *TCPRequest) {
 	targetConn, err := s.DialTCP(req.TargetAddr)
 	if err != nil {
@@ -41,37 +46,43 @@ func (s *TCPConn) HandleCONNECT(conn net.Conn, req *TCPRequest) {
 		return
 	}
 	req.TargetConn = targetConn
-	s.NewTCPRequest(req)
+	s.RegisterTCPRequest(req)
 	closeChan := make(chan error, 2)
+	//asynchronous transport launch
 	s.TCPTransport(conn, targetConn, closeChan)
+	//reply
 	s.sendReply(conn, targetConn.LocalAddr().(*net.TCPAddr).IP, targetConn.LocalAddr().(*net.TCPAddr).Port, 0)
-	for i := 0; i < 2; i++ {
+	//error handling
+	for range [2]struct{}{} {
 		<-closeChan
 	}
 	s.DelTCPRequest(req.TargetAddr.String())
 }
 
-//Concurrently TCP traffic transport with 3 reading timeout
+// Concurrently TCP traffic transport with 3 reading timeout
 func (s *TCPConn) TCPTransport(clientConn, remoteConn net.Conn, closeChan chan error) {
 	go func() {
 		limit := TCPRETRY
 		remoteConn.SetReadDeadline(time.Time{})
 		for {
 			n, err := io.Copy(clientConn, remoteConn)
-			if err == nil {
-				if n == 0 {
-					time.Sleep(time.Second * 3)
-					continue
-				}
-				log.Printf("[ID:%v][TCP]remote:%v send %v bytes -> client:%v\n", s.ID(), remoteConn.RemoteAddr(), n, clientConn.RemoteAddr())
-			} else {
-				if err == io.EOF || strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "closed") || limit <= 0 {
+			if err != nil {
+				if errors.Is(err, io.EOF) ||
+					strings.Contains(err.Error(), "timeout") ||
+					strings.Contains(err.Error(), "closed") ||
+					limit <= 0 {
 					closeChan <- err
 					return
 				}
 				time.Sleep(time.Second * 5)
 				limit--
+				continue
 			}
+			if n == 0 {
+				time.Sleep(time.Second * 3)
+				continue
+			}
+			log.Printf("[ID:%v][TCP]remote:%v send %v bytes -> client:%v\n", s.ID(), remoteConn.RemoteAddr(), n, clientConn.RemoteAddr())
 		}
 	}()
 	go func() {
@@ -79,67 +90,76 @@ func (s *TCPConn) TCPTransport(clientConn, remoteConn net.Conn, closeChan chan e
 		clientConn.SetReadDeadline(time.Time{})
 		for {
 			n, err := io.Copy(remoteConn, clientConn)
-			if err == nil {
-				if n == 0 {
-					time.Sleep(time.Second * 3)
-					continue
-				}
-				log.Printf("[ID:%v][TCP]client:%v send %v bytes -> remote:%v\n", s.ID(), clientConn.RemoteAddr(), n, remoteConn.RemoteAddr())
-			} else {
-				if err == io.EOF || strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "closed") || limit <= 0 {
+			if err != nil {
+				if errors.Is(err, io.EOF) ||
+					strings.Contains(err.Error(), "timeout") ||
+					strings.Contains(err.Error(), "closed") ||
+					limit <= 0 {
 					closeChan <- err
 					return
 				}
 				time.Sleep(time.Second * 5)
 				limit--
+				continue
 			}
+			if n == 0 {
+				time.Sleep(time.Second * 3)
+				continue
+			}
+			log.Printf("[ID:%v][TCP]client:%v send %v bytes -> remote:%v\n", s.ID(), clientConn.RemoteAddr(), n, remoteConn.RemoteAddr())
 		}
 	}()
 }
 
 /*
++----+-----+-------+------+----------+----------+
+
+	|VER | REP | RSV | ATYP | BND.ADDR | BND.PORT |
 	+----+-----+-------+------+----------+----------+
-	 |VER | REP | RSV | ATYP | BND.ADDR | BND.PORT |
-	 +----+-----+-------+------+----------+----------+
-	 | 1 | 1 | X’00’ | 1 | Variable | 2 |
-	 +----+-----+-------+------+----------+----------+
+	| 1 | 1 | X’00’ | 1 | Variable | 2 |
+	+----+-----+-------+------+----------+----------+
 */
 func (s *TCPConn) sendReply(conn net.Conn, addrIP net.IP, addrPort int, resp int) {
-	addrATYP := byte(0)
-	var addrBody []byte
+	var (
+		addrATYP byte
+		addrBody []byte
+	)
 	switch {
-	case addrIP == nil:
+	case addrIP == nil || addrIP.To4() != nil:
 		addrATYP = atypIPV4
-		addrBody = []byte{0, 0, 0, 0}
-	case addrIP.To4() != nil:
-		addrATYP = atypIPV4
-		addrBody = []byte(addrIP.To4())
+		addrBody = addrIP.To4()
+		if addrBody == nil {
+			addrBody = []byte{0, 0, 0, 0}
+		}
 	case addrIP.To16() != nil:
 		addrATYP = atypIPV6
-		addrBody = []byte(addrIP.To16())
+		addrBody = addrIP.To16()
 	default:
 		log.Printf("[ID:%v]failed to format address.", s.ID())
+		return
 	}
-	msg := make([]byte, 0)
-	msg = append(msg, byte(SOCKS5VERSION))
-	msg = append(msg, byte(resp))
-	msg = append(msg, byte(0))
-	msg = append(msg, addrATYP)
+
+	msg := []byte{
+		byte(SOCKS5VERSION),
+		byte(resp),
+		byte(0),
+		addrATYP,
+	}
 	msg = append(msg, addrBody...)
-	msg = append(msg, byte(addrPort>>8))
-	msg = append(msg, byte(addrPort&0xff))
-	_, err := conn.Write(msg)
-	if err != nil {
+	msg = append(msg, byte(addrPort>>8), byte(addrPort&0xff))
+
+	if _, err := conn.Write(msg); err != nil {
 		log.Printf("[ID:%v]%v", s.ID(), err)
 	}
 }
 
 /*
 +----+------+----------+------+----------+
- |VER | ULEN | UNAME | PLEN | PASSWD |
- +----+------+----------+------+----------+
- | 1 | 1 | 1 to 255 | 1 | 1 to 255 |
- +----+------+----------+------+----------+
+
+	|VER | ULEN | UNAME | PLEN | PASSWD |
+	+----+------+----------+------+----------+
+	| 1 | 1 | 1 to 255 | 1 | 1 to 255 |
+	+----+------+----------+------+----------+
 */
 func (s *TCPConn) resolveUserPwd(conn net.Conn) (user, pwd string, err error) {
 	verByte := make([]byte, 1)

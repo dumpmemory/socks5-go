@@ -15,7 +15,7 @@ import (
 type Server struct {
 	*Socks5UDPserver
 	//conn          []*TCPConn
-	lock          sync.RWMutex
+	locker        sync.RWMutex
 	TCPRequestMap map[string]*TCPRequest
 	hostResolver  *net.Resolver
 	Conf          Config
@@ -36,7 +36,7 @@ func NewSocks5Server(config Config) *Server {
 		s.Conf = DefaultConfig
 	}
 	s.TCPRequestMap = make(map[string]*TCPRequest)
-	s.lock = sync.RWMutex{}
+	s.locker = sync.RWMutex{}
 	s.hostResolver = &net.Resolver{
 		PreferGo: false,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -119,10 +119,10 @@ type TCPConn struct {
 	Dialer  *net.Dialer
 }
 
-// NewTCPRequest Add new connect request
-func (s *TCPConn) NewTCPRequest(req *TCPRequest) *TCPRequest {
-	s.server.lock.Lock()
-	defer s.server.lock.Unlock()
+// RegisterTCPRequest Add new connect request
+func (s *TCPConn) RegisterTCPRequest(req *TCPRequest) *TCPRequest {
+	s.server.locker.Lock()
+	defer s.server.locker.Unlock()
 	targetAddrStr := req.TargetConn.RemoteAddr().(*net.TCPAddr).String()
 	if s.server.TCPRequestMap[targetAddrStr] == nil {
 		s.server.TCPRequestMap[targetAddrStr] = req
@@ -132,8 +132,8 @@ func (s *TCPConn) NewTCPRequest(req *TCPRequest) *TCPRequest {
 
 // DelTCPRequest del request & close connection
 func (s *TCPConn) DelTCPRequest(targetAddr string) {
-	s.server.lock.Lock()
-	defer s.server.lock.Unlock()
+	s.server.locker.Lock()
+	defer s.server.locker.Unlock()
 	request := s.server.TCPRequestMap[targetAddr]
 	if request != nil {
 		if request.TargetConn != nil {
@@ -171,12 +171,13 @@ type Socks5UDPserver struct {
 
 // UDPRequest save each of udp conn by client.support for fragments
 type UDPRequest struct {
-	clientAddr      *net.UDPAddr
-	remoteConn      *net.UDPConn
-	remoteAddr      *net.UDPAddr
-	reassemblyQueue []byte
-	position        int
-	requestConn     net.Conn
+	clientAddr       *net.UDPAddr
+	remoteConn       *net.UDPConn
+	remoteAddr       *net.UDPAddr
+	reassemblyQueue  []byte
+	position         int
+	requestConn      net.Conn
+	lastFragmentTime time.Time
 }
 type TCPRequest struct {
 	TargetAddr *net.TCPAddr

@@ -58,7 +58,6 @@ func TrimHeader(dataBuf *bytes.Buffer) (frag byte, dstIP *net.IP, dstPort int) {
 
 	//RSV
 	dataBuf.ReadByte()
-	dataBuf.ReadByte()
 	//FRAG
 	frag, err := dataBuf.ReadByte()
 	if err != nil {
@@ -122,7 +121,52 @@ func TrimHeader(dataBuf *bytes.Buffer) (frag byte, dstIP *net.IP, dstPort int) {
 	return
 }
 
-//UDPTransport handle UDP traffic
+func (s *Server) handleUDPReplie(relayConn *net.UDPConn, request *UDPRequest, done chan struct{}) {
+	b := make([]byte, MAXUDPDATA)
+	request.remoteConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	close(done)
+	for {
+		n, _, err := request.remoteConn.ReadFromUDP(b)
+		if n > 0 {
+			dataBuf := AssembleHeader(b[:n], request.remoteAddr)
+			relayConn.WriteMsgUDP(dataBuf.Bytes(), nil, request.clientAddr)
+			log.Printf("[UDP] remote:%v -> client:%v, bytes:%d\n", request.remoteAddr, request.clientAddr, n)
+		} else if err != nil {
+			if err == io.EOF ||
+				strings.Contains(err.Error(), "timeout") ||
+				strings.Contains(err.Error(), "closed") {
+				break
+			}
+		}
+	}
+	s.locker.Lock()
+	request.remoteConn.Close()
+	delete(s.UDPRequestMap, request.clientAddr.String())
+	s.locker.Unlock()
+}
+func (s *Server) processUDPDategrams(request *UDPRequest, dataBuf *bytes.Buffer, frag byte, b []byte, remoteConn *net.UDPConn) {
+	switch {
+	//data was fragmented,save data into queue
+	case int(frag) > request.position:
+		request.position = int(frag)
+		request.reassemblyQueue = append(request.reassemblyQueue, dataBuf.Bytes()...)
+
+	case frag == 0:
+		if len(request.reassemblyQueue) > 0 {
+			remoteConn.Write(request.reassemblyQueue)
+			request.reassemblyQueue = []byte{}
+			request.position = 0
+		}
+		remoteConn.Write(dataBuf.Bytes())
+		log.Printf("[UDP] client:%v -> remote:%v, bytes:%d\n", request.clientAddr, remoteConn.RemoteAddr(), len(b))
+	case int(frag) < request.position:
+		log.Printf("[UDP] Ignoring outdated or duplicate fragment from client:%v\n", request.clientAddr)
+		request.reassemblyQueue = []byte{}
+		request.position = 0
+	}
+}
+
+// UDPTransport handle UDP traffic
 func (s *Server) UDPTransport(relayConn *net.UDPConn, clientAddr *net.UDPAddr, b []byte) {
 	dataBuf := bytes.NewBuffer(b)
 	frag, dstIP, dstPort := TrimHeader(dataBuf)
@@ -137,77 +181,24 @@ func (s *Server) UDPTransport(relayConn *net.UDPConn, clientAddr *net.UDPAddr, b
 		return
 	}
 	//if request is existed
-	s.lock.Lock()
-	if s.UDPRequestMap[clientAddr.String()] == nil {
-		s.UDPRequestMap[clientAddr.String()] = &UDPRequest{
+	s.locker.Lock()
+	request, exists := s.UDPRequestMap[clientAddr.String()]
+	if !exists {
+		request = &UDPRequest{
 			clientAddr:      clientAddr,
 			remoteConn:      remoteConn,
 			remoteAddr:      remoteAddr,
 			reassemblyQueue: []byte{},
 			position:        0,
 		}
+		s.UDPRequestMap[clientAddr.String()] = request
 	}
-	s.lock.Unlock()
-	request := s.UDPRequestMap[clientAddr.String()]
+	s.locker.Unlock()
 	//UDPRequestChan <- request
 	LaunchReplyChan := make(chan struct{})
-	go func(v *UDPRequest) {
-		request.remoteConn.SetReadDeadline(time.Now().Add(time.Second * 3))
-		//assemble proxy header
-		b := make([]byte, MAXUDPDATA)
-		LaunchReplyChan <- struct{}{}
-		for {
-			n, _, err := request.remoteConn.ReadFromUDP(b)
-			if n == 0 {
-				if err != nil {
-					if err == io.EOF || strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "closed") {
-						break
-					}
-				}
-				continue
-			}
-			dataBuf := AssembleHeader(b[:n], v.clientAddr)
-			relayConn.WriteMsgUDP(dataBuf.Bytes(), nil, v.clientAddr)
-			log.Printf("[UDP]remote:%v send %v bytes -> client:%v\n", v.remoteAddr, n, v.clientAddr)
-		}
-		s.lock.Lock()
-		request.remoteConn.Close()
-		delete(s.UDPRequestMap, v.clientAddr.String())
-		s.lock.Unlock()
-	}(request)
+	//read remote data,transfer to client
+	go s.handleUDPReplie(relayConn, request, LaunchReplyChan)
 	<-LaunchReplyChan
 
-	if int(frag) > request.position {
-		request.position = int(frag)
-		//save data
-		request.reassemblyQueue = append(request.reassemblyQueue, dataBuf.Bytes()...)
-		return
-	}
-	//standalone
-	if frag == 0 {
-		if len(request.reassemblyQueue) > 0 {
-			remoteConn.Write(request.reassemblyQueue)
-			//reinitialize
-			request.reassemblyQueue = []byte{}
-			request.position = 0
-		}
-		remoteConn.Write(dataBuf.Bytes())
-		log.Printf("[UDP]client:%v send %v bytes -> remote:%v\n", clientAddr, len(b), remoteAddr)
-		return
-	}
-
-	//begin to handle  a new datagrams
-	if int(frag) < request.position {
-		//send previous datagrams
-		remoteConn.Write(request.reassemblyQueue)
-		log.Printf("[UDP]client:%v send %v bytes -> remote:%v\n", relayConn.LocalAddr(), len(b), remoteConn.RemoteAddr())
-		//reinitialize
-		request.reassemblyQueue = []byte{}
-		request.position = 0
-
-		//save data
-		request.position = int(frag)
-		//save data
-		request.reassemblyQueue = append(request.reassemblyQueue, dataBuf.Bytes()...)
-	}
+	s.processUDPDategrams(request, dataBuf, frag, b, remoteConn)
 }
