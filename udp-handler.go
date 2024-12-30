@@ -142,7 +142,10 @@ func (s *Server) handleUDPReplie(relayConn *net.UDPConn, request *UDPRequest, do
 	request.remoteConn.Close()
 	delete(s.UDPRequestMap, request.clientAddr.String())
 	s.locker.Unlock()
+	// 缺少会话超时清理机制
+	// 可能导致内存泄漏
 }
+
 func (s *Server) processUDPDategrams(request *UDPRequest, dataBuf *bytes.Buffer, frag byte, b []byte, remoteConn *net.UDPConn) {
 	switch {
 	//data was fragmented,save data into queue

@@ -21,6 +21,11 @@ The package has the following features:
 - [x] Support for the **CONNECT** command
 - [x] Support for the **BIND** command(require the client to accept connections from the server,like FTP etc.)
 - [x] Support for the **UDP ASSOCIATE** command
+- [x] TCP connection optimize and copy buffer 
+- [ ] UDP sessions management
+- [ ] UDP sessions timeout clearing mechanism missing
+- [ ] UDP session memory pool
+- [ ] Monitoring index (active connection count,traffic statistics,Delay statistics)
 - [ ] Unit tests
 
 Download📶

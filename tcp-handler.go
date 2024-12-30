@@ -6,13 +6,27 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 )
 
+const (
+	// 优化 TCP 缓冲区大小
+	tcpReadBufferSize  = 32 * 1024 // 32KB
+	tcpWriteBufferSize = 32 * 1024 // 32KB
+)
+
 // support for CMD BIND
 func (s *TCPConn) HandleBIND(conn net.Conn, req *TCPRequest) {
+	// 设置客户端连接选项
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		if err := setTCPOptions(tcpConn); err != nil {
+			log.Printf("[ID:%v]Failed to set client TCP options: %v\n", s.ID(), err)
+		}
+	}
+
 	//launch listener on proxy server side
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -26,6 +40,13 @@ func (s *TCPConn) HandleBIND(conn net.Conn, req *TCPRequest) {
 	if err != nil {
 		return
 	}
+	// 设置目标服务器连接选项
+	if tcpConn, ok := targetConn.(*net.TCPConn); ok {
+		if err := setTCPOptions(tcpConn); err != nil {
+			log.Printf("[ID:%v]Failed to set target TCP options: %v\n", s.ID(), err)
+		}
+	}
+
 	//sec reply
 	s.sendReply(conn, targetConn.RemoteAddr().(*net.TCPAddr).IP, targetConn.RemoteAddr().(*net.TCPAddr).Port, 0)
 	s.RegisterTCPRequest(req)
@@ -40,11 +61,25 @@ func (s *TCPConn) HandleBIND(conn net.Conn, req *TCPRequest) {
 
 // support for CMD CONNECT
 func (s *TCPConn) HandleCONNECT(conn net.Conn, req *TCPRequest) {
+	// 设置客户端连接选项
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		if err := setTCPOptions(tcpConn); err != nil {
+			log.Printf("[ID:%v]Failed to set client TCP options: %v\n", s.ID(), err)
+		}
+	}
+
 	targetConn, err := s.DialTCP(req.TargetAddr)
 	if err != nil {
 		s.sendReply(conn, req.TargetAddr.IP, req.TargetAddr.Port, 3)
 		return
 	}
+	// 设置目标服务器连接选项
+	if tcpConn, ok := targetConn.(*net.TCPConn); ok {
+		if err := setTCPOptions(tcpConn); err != nil {
+			log.Printf("[ID:%v]Failed to set target TCP options: %v\n", s.ID(), err)
+		}
+	}
+
 	req.TargetConn = targetConn
 	s.RegisterTCPRequest(req)
 	closeChan := make(chan error, 2)
@@ -65,7 +100,7 @@ func (s *TCPConn) TCPTransport(clientConn, remoteConn net.Conn, closeChan chan e
 		limit := TCPRETRY
 		remoteConn.SetReadDeadline(time.Time{})
 		for {
-			n, err := io.Copy(clientConn, remoteConn)
+			n, err := copyBuffer(clientConn, remoteConn)
 			if err != nil {
 				if errors.Is(err, io.EOF) ||
 					strings.Contains(err.Error(), "timeout") ||
@@ -89,7 +124,8 @@ func (s *TCPConn) TCPTransport(clientConn, remoteConn net.Conn, closeChan chan e
 		limit := TCPRETRY
 		clientConn.SetReadDeadline(time.Time{})
 		for {
-			n, err := io.Copy(remoteConn, clientConn)
+			// n, err := io.Copy(remoteConn, clientConn)
+			n, err := copyBuffer(remoteConn, clientConn)
 			if err != nil {
 				if errors.Is(err, io.EOF) ||
 					strings.Contains(err.Error(), "timeout") ||
@@ -255,4 +291,39 @@ func (s *TCPConn) resolveAddress(conn net.Conn, req *TCPRequest) (err error) {
 		Zone: "",
 	}
 	return
+}
+
+func setTCPOptions(conn *net.TCPConn) error {
+	// 设置 TCP keepalive
+	if err := conn.SetKeepAlive(true); err != nil {
+		return err
+	}
+	if err := conn.SetKeepAlivePeriod(30 * time.Second); err != nil {
+		return err
+	}
+
+	// 设置缓冲区
+	if err := conn.SetReadBuffer(tcpReadBufferSize); err != nil {
+		return err
+	}
+	if err := conn.SetWriteBuffer(tcpWriteBufferSize); err != nil {
+		return err
+	}
+
+	// 禁用 Nagle 算法，减少延迟
+	return conn.SetNoDelay(true)
+}
+
+func copyBuffer(dst net.Conn, src net.Conn) (int64, error) {
+	buf := bufferPool.Get().([]byte)
+	defer bufferPool.Put(buf)
+
+	n, err := io.CopyBuffer(dst, src, buf)
+	return n, err
+}
+
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 32*1024)
+	},
 }

@@ -97,6 +97,7 @@ func (s *Server) startUDPServer() {
 	defer relayConn.Close()
 	log.Printf("UDP SERVER IS LISTENING ON %v", relayConn.LocalAddr())
 	for {
+		//UDP memory pool
 		b := make([]byte, MAXUDPDATA)
 		n, clientAddr, err := relayConn.ReadFromUDP(b)
 		if err != nil {
