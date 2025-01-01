@@ -11,7 +11,7 @@ COPY . .
 
 # 构建应用
 RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux go build -o socks5-proxy ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o socks5-go ./cmd/main.go
 
 # 运行阶段
 FROM alpine:3.17
