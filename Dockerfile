@@ -11,7 +11,7 @@ COPY . .
 
 # 构建应用
 RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux go build -o socks5-proxy ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o socks5-go ./cmd/main.go
 
 # 运行阶段
 FROM alpine:3.17
@@ -19,11 +19,11 @@ FROM alpine:3.17
 WORKDIR /app
 
 # 从构建阶段复制二进制文件
-COPY --from=builder /app/socks5-proxy .
+COPY --from=builder /app/socks5-go .
 
 # 暴露端口
 EXPOSE 1080/tcp
 EXPOSE 1080/udp
 
 # 启动应用
-ENTRYPOINT ["./socks5-proxy"] 
+ENTRYPOINT ["./socks5-go"] 

@@ -28,10 +28,10 @@ jobs:
           name: Build Application
           command: |
             go mod tidy
-            CGO_ENABLED=0 GOOS=linux go build -o socks5-proxy ./cmd/main.go
+            CGO_ENABLED=0 GOOS=linux go build -o socks5-go ./cmd/main.go
       - run:
           name: Verify Binary
-          command: ./socks5-proxy --help || echo "Build successful"
+          command: ./socks5-go --help || echo "Build successful"
 
 # Orchestrate jobs using workflows
 # See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows

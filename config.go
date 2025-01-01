@@ -26,7 +26,7 @@ type defConfig struct {
 var DefaultConfig = newDefConfig()
 
 const helpText = `
-Usage: socks5-proxy [OPTIONS]
+Usage: socks5-go [OPTIONS]
 
 Options:
   <port>                    Listen port (default: 1080)
@@ -39,9 +39,9 @@ Environment variables:
   SOCKS5_PASSWORD          Password for authentication
 
 Examples:
-  socks5-proxy                     # Run with default port 1080
-  socks5-proxy 2080                # Run on port 2080
-  socks5-proxy 1080 user pass      # Run with authentication
+  socks5-go                     # Run with default port 1080
+  socks5-go 2080                # Run on port 2080
+  socks5-go 1080 user pass      # Run with authentication
 `
 
 // default config ,read port ,user,pwd from argumens
