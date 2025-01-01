@@ -19,7 +19,7 @@ FROM alpine:3.17
 WORKDIR /app
 
 # 从构建阶段复制二进制文件
-COPY --from=builder /app/socks5-proxy .
+COPY --from=builder /app/socks5-go .
 
 # 暴露端口
 EXPOSE 1080/tcp
