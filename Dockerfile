@@ -26,4 +26,4 @@ EXPOSE 1080/tcp
 EXPOSE 1080/udp
 
 # 启动应用
-ENTRYPOINT ["./socks5-proxy"] 
+ENTRYPOINT ["./socks5-go"] 
